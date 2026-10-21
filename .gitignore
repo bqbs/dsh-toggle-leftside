@@ -1,0 +1,17 @@
+# DSH runtime artifacts unpacked from app.asar for inspection.
+# These are build outputs of the host app, not sources: they are large,
+# machine-specific, and drift with every DSH release.
+_diag/
+
+# Local scratch files and editor/OS noise.
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# The IDE tooling directory ships its own ignore rule; keep it out of history
+# so the repository tracks the plugin, not the editor state.
+.codeartsdoer/
+
+# Dependencies are linked from a DSH profile and are never vendored here.
+node_modules/

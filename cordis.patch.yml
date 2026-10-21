@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-compact-left
+      name: '@local/dsh-compact-left'
