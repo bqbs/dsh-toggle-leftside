@@ -28,6 +28,31 @@ PINNED    ──click the toggle────────────────
   shell's tooltip bubble, which would otherwise surface over the column the peek
   just opened.
 
+## The collapsed toggle shows the brand mark
+
+The shipped toggle renders a generic panel-left glyph. On the non-Windows rail
+the shell swaps in the product's brand mark, but in the Windows caption it keeps
+the glyph — so a collapsed column there reads as "some panel" instead of as the
+product. This plugin fills that gap.
+
+The artwork is **cloned from the shell's own brand row**
+(`[data-slot="sidebar.brand.mark"]`), never copied: there is no second source of
+truth to drift from. The shell mounts that row only while the column is wide, so
+the artwork is cached during a peek and reused while collapsed — and until the
+first peek there is nothing to show, in which case the icon is left exactly as
+shipped rather than replaced with a look-alike.
+
+Three guards keep it from ever doubling up:
+
+1. the mark is removed as soon as the column opens;
+2. if the shell already renders its own brand mark on the toggle, none is added;
+3. with no artwork to clone, the icon is untouched.
+
+React owns the button's children, so the mark is a sibling the shell never
+touches and the shipped glyph is hidden by CSS rather than deleted. The shell's
+own hover rule still flips the icon to the panel glyph on hover, so the gesture
+keeps reading as "open the sidebar".
+
 ## Why pointer geometry is computed from live boxes
 
 The shipped shell has no stable API for "is the sidebar open". The plugin reads

@@ -70,6 +70,18 @@ window.__ModuleLoader__.load({
       x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 
     /**
+     * Attribute marking the toggle button whose shipped panel-left icon this
+     * plugin has replaced with the brand mark.
+     */
+    const BRANDED_ATTR = 'data-dsh-compact-left-branded';
+    /**
+     * Attribute the shell puts on the element that renders the brand mark, and
+     * the selector this plugin reads to find the brand artwork.
+     */
+    const BRAND_SLOT_ATTR = 'data-slot';
+    const BRAND_SLOT = 'sidebar.brand.mark';
+
+    /**
      * Marker set on the sidebar column while a peek is up. The shell's tooltip
      * bubble is a portal child of `body`, so it is not inside the column and a
      * descendant rule cannot reach it; the visible bubble is emptied instead.
@@ -77,7 +89,25 @@ window.__ModuleLoader__.load({
      * bubble that does mount inside the column.
      */
     const PEEK_ATTR = 'data-dsh-compact-left-peek';
-    const CSS = `[${PEEK_ATTR}] [role="tooltip"] { display: none !important; }`;
+    /**
+     * The collapsed toggle carries the brand mark instead of the shipped panel
+     * glyph. The shell already ships a rule that does exactly this for the
+     * non-Windows case (`.collapsed .toggle .railMark` shown, `.panelIcon`
+     * hidden, flipped on hover), but it keys off `windowsTitlebar`, where it
+     * leaves the panel glyph in place. These rules extend the same behaviour to
+     * the Windows caption toggle, and keep the hover flip the shell defines:
+     * hovering the toggle shows the panel glyph again, so the gesture still
+     * reads as "open the sidebar".
+     */
+    const CSS = [
+      `[${PEEK_ATTR}] [role="tooltip"] { display: none !important; }`,
+      // The brand mark replaces the panel glyph only while collapsed.
+      `[${BRANDED_ATTR}] ._2H3hWW_panelIcon { display: none !important; }`,
+      // The shell's hover rule re-shows the panel glyph; match it so hover
+      // still flips the icon, exactly as it does on the non-Windows rail.
+      `[${BRANDED_ATTR}]:hover ._2H3hWW_panelIcon { display: inline !important; }`,
+      `[${BRANDED_ATTR}]:hover [data-dsh-compact-left-brand-mark] { display: none !important; }`,
+    ].join('\n');
 
     return {
       /**
@@ -147,6 +177,83 @@ window.__ModuleLoader__.load({
             const el = columnEl();
             return el !== null && endsWithClass(el, '_collapsed');
           };
+
+          /**
+           * The brand artwork the shell renders in its brand row.
+           *
+           * Cloned rather than copied, so the collapsed toggle always carries
+           * exactly what the product shows: there is no second source of truth to
+           * drift. The clone keeps the original's gradient id on purpose -- it must
+           * reference the same <defs> the brand row paints with, and that id lives
+           * in the document, so both marks resolve to one definition.
+           *
+           * The shell renders the brand row only while the column is wide, so a
+           * collapsed column has nothing to read. The artwork is therefore cached
+           * whenever it is available -- on every peek, while the row is mounted --
+           * and reused while the column is collapsed. Until the first peek the
+           * cache is empty and the icon is left as shipped, which is the intended
+           * fallback.
+           */
+          let brandMarkCache = null;
+          const cacheBrandMark = () => {
+            const slot = doc.querySelector(`[${BRAND_SLOT_ATTR}="${BRAND_SLOT}"]`);
+            if (slot === null) return;
+            const svg = slot.querySelector('svg');
+            if (svg === null || typeof svg.cloneNode !== 'function') return;
+            brandMarkCache = svg.cloneNode(true);
+          };
+          const brandMarkSource = () => brandMarkCache;
+
+          /**
+           * Put the brand mark on the collapsed toggle, and take it off again
+           * when the column opens.
+           *
+           * The shipped toggle always renders the panel-left glyph. On the
+           * non-Windows rail the shell already swaps in its own brand mark, so
+           * this plugin leaves that alone; on the Windows caption the shell keeps
+           * the panel glyph, and that is the gap this fills.
+           *
+           * When the shell's brand row is not mounted there is no artwork to
+           * clone, and the icon is left exactly as shipped rather than replaced
+           * with a look-alike.
+           *
+           * React owns the button's children, so the mark is added and removed as
+           * a sibling the shell never touches, and the shipped glyph is hidden
+           * by CSS rather than deleted -- deleting it would fight React on its
+           * next render. The swap follows the column's own class, so it survives
+           * re-renders without any hook into React's lifecycle.
+           */
+          const syncBrandMark = () => {
+            const toggle = toggleEl();
+            if (toggle === null) return;
+            const existing = toggle.querySelector('[data-dsh-compact-left-brand-mark]');
+            if (!isCollapsed()) {
+              // Column open: the panel glyph belongs here, as the shell renders it.
+              existing?.remove();
+              toggle.removeAttribute(BRANDED_ATTR);
+              return;
+            }
+            if (existing !== null) return;
+            // The shell already puts its own brand mark on this toggle, so this
+            // plugin must not add a second one.
+            if (toggle.querySelector('[class*="_railMark"]') !== null) {
+              toggle.removeAttribute(BRANDED_ATTR);
+              return;
+            }
+            const source = brandMarkSource();
+            // No brand artwork mounted: keep the shipped icon untouched.
+            if (source === null) {
+              toggle.removeAttribute(BRANDED_ATTR);
+              return;
+            }
+            toggle.setAttribute(BRANDED_ATTR, '');
+            const holder = doc.createElement('span');
+            holder.setAttribute('data-dsh-compact-left-brand-mark', '');
+            holder.setAttribute('aria-hidden', 'true');
+            holder.style.cssText = 'display:inline-flex;justify-content:center;align-items:center;flex:none';
+            holder.appendChild(source.cloneNode(true));
+            toggle.appendChild(holder);
+          };
           const clearOpen = () => {
             window.clearTimeout(openTimer);
             openTimer = 0;
@@ -196,6 +303,22 @@ window.__ModuleLoader__.load({
             }
           };
 
+          /**
+           * Reconcile everything the plugin shows on the toggle with the shell's
+           * current state. Both the peek marker and the brand mark follow the
+           * column's own classes, so this is the single place the DOM is fixed
+           * up after the shell re-renders.
+           *
+           * The brand artwork is cached here, while the column is wide and the
+           * shell still renders its brand row -- after the collapse that row is
+           * gone, and the mark this plugin shows is the only copy left.
+           */
+          const syncToggle = () => {
+            if (!isCollapsed()) cacheBrandMark();
+            syncBrandMark();
+            syncPeekMark();
+          };
+
           const openNow = () => {
             openTimer = 0;
             // The preference is read here, at the moment of use, so switching it
@@ -210,7 +333,7 @@ window.__ModuleLoader__.load({
             // The column may have been opened by the user meanwhile; either way
             // hovering it must not schedule a collapse.
             clearClose();
-            syncPeekMark();
+            syncToggle();
           };
 
           /**
@@ -227,18 +350,22 @@ window.__ModuleLoader__.load({
             if (!pointerLeft && lastX >= 0 && inPeekSurfaces(lastX, lastY)) {
               // A stationary pointer never fires `pointermove`; keep the peek.
               over = true;
-              syncPeekMark();
+              syncToggle();
               return;
             }
             peeking = false;
             over = false;
-            syncPeekMark();
+            syncToggle();
             // Only undo an expansion this plugin started, and only if the column
             // is still open: a click that pinned it must not be reversed here.
             if (isCollapsed()) return;
             const layout = ctx.get('layout');
             if (layout === undefined) return;
             layout.toggleSidebar();
+            // The toggle re-rendered the column, so reconcile again now that the
+            // new class has landed: the mark this state needs is applied here
+            // rather than waiting for the observer's microtask.
+            syncToggle();
           };
 
           const scheduleClose = (pointerLeft) => {
@@ -252,7 +379,7 @@ window.__ModuleLoader__.load({
             lastY = event.clientY;
             const inside = inPeekSurfaces(lastX, lastY);
             over = inside;
-            syncPeekMark();
+            syncToggle();
             if (!inside) {
               scheduleClose();
               return;
@@ -272,7 +399,7 @@ window.__ModuleLoader__.load({
 
           const onPointerExitWindow = () => {
             over = false;
-            syncPeekMark();
+            syncToggle();
             scheduleClose(true);
           };
 
@@ -291,7 +418,7 @@ window.__ModuleLoader__.load({
             peeking = false;
             clearOpen();
             clearClose();
-            syncPeekMark();
+            syncToggle();
             event.stopPropagation();
             event.preventDefault();
           };
@@ -309,13 +436,46 @@ window.__ModuleLoader__.load({
           doc.addEventListener('pointerdown', onPointerDownCapture, true);
           doc.addEventListener('click', onToggleClickCapture, true);
 
+          // The shell re-renders the toggle on every state change, so the mark
+          // has to be re-applied after React commits. Watching the column's own
+          // attributes catches every one of those re-renders, including ones the
+          // plugin did not cause (a click that pins the column, a theme switch, a
+          // window resize crossing the narrow breakpoint). Class changes are the
+          // only signal needed: `_collapsed` is exactly the state the mark
+          // follows, and the attribute filter keeps this cheap.
+          //
+          // The subtree is watched rather than the column element alone, so the
+          // mark is re-applied even if React replaces the column or the toggle
+          // outright (a slot remount, a plugin reload). Every callback re-resolves
+          // the element through `toggleEl()`, which reads the live DOM.
+          let observer = null;
+          const observedRoot = columnEl() ?? doc.body;
+          if (typeof MutationObserver === 'function') {
+            observer = new MutationObserver(() => syncBrandMark());
+            observer.observe(observedRoot, {
+              attributes: true,
+              attributeFilter: ['class'],
+              subtree: true,
+              childList: true,
+            });
+          }
+
+          // Apply the mark once now, so a column that is already collapsed shows
+          // it without waiting for a pointer event.
+          syncToggle();
+
           return () => {
             clearOpen();
             clearClose();
+            observer?.disconnect();
             // Release the mark even when the column is gone, or the next
             // activation would inherit a stale peek.
             for (const el of doc.querySelectorAll('[' + PEEK_ATTR + ']')) {
               el.removeAttribute(PEEK_ATTR);
+            }
+            for (const el of doc.querySelectorAll('[' + BRANDED_ATTR + ']')) {
+              el.removeAttribute(BRANDED_ATTR);
+              el.querySelector('[data-dsh-compact-left-brand-mark]')?.remove();
             }
             style.remove();
             doc.removeEventListener('pointermove', onPointerMove);
