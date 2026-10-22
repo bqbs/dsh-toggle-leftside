@@ -187,6 +187,14 @@ window.__ModuleLoader__.load({
            */
           let closingFloat = false;
           /**
+           * True between requesting the collapse and the shell actually landing it.
+           * On web the shell keeps `wide` true for COLLAPSE_SETTLE_MS while the wide
+           * column fades, so `_collapsed` arrives later than the toggle call. The
+           * drawer's inline geometry must survive that window; otherwise the column
+           * snaps back to the wide layout and the rail is painted twice.
+           */
+          let collapsingToRail = false;
+          /**
            * The grid template the frame uses while collapsed, captured live from
            * the computed style. Re-applying it while a peek is floating forces
            * the main area back to its collapsed width, so the floating drawer
@@ -597,6 +605,11 @@ window.__ModuleLoader__.load({
             }
             if (!options.keepPin) dropPinNow();
             const finish = () => {
+              // If the collapse is still settling (`collapsingToRail`), the column
+              // is the wide one fading out: tearing the drawer's inline geometry
+              // down now hands it back to React at full width, so the rail paints
+              // twice. `syncToggle` owns the cleanup once `_collapsed` lands.
+              if (collapsingToRail) return;
               clearColumnInline();
               // The pin is dropped together with the drawer's own geometry, so the
               // main area changes width exactly once, after the animation. This is
@@ -652,6 +665,30 @@ window.__ModuleLoader__.load({
             // and makes it blink.
             const floating = isFloating();
             const collapsed = isCollapsed() && !(floating && !closingFloat);
+            // On web the shell collapses in two steps: `toggleSidebar()` flips the
+            // store immediately, but `wide` stays true for COLLAPSE_SETTLE_MS (150)
+            // while the wide column fades, and only then does `_collapsed` land.
+            // While that is pending the column is neither a floating drawer nor a
+            // settled rail -- it is the wide column fading out. Tearing the drawer's
+            // inline geometry down at that point hands it back to React at full
+            // width, so the rail shows once as a wide column and again when
+            // `_collapsed` lands. Keep the drawer in place until the collapse
+            // actually lands.
+            if (collapsingToRail) {
+              if (collapsed) {
+                // The rail is real now: finish the close in this same pass so the
+                // geometry is gone before the browser paints it.
+                collapsingToRail = false;
+                closingFloat = false;
+                clearColumnInline();
+                dropPinNow();
+              } else {
+                // Still the fading wide column: hold the drawer exactly as it is.
+                syncBrandMark();
+                syncPeekMark();
+                return;
+              }
+            }
             if (collapsed) {
               captureCollapsedTemplate();
             } else {
@@ -677,6 +714,9 @@ window.__ModuleLoader__.load({
             if (isCollapsed()) {
               const layout = ctx.get('layout');
               if (layout === undefined) return;
+              // Re-opening supersedes any collapse still waiting to land.
+              collapsingToRail = false;
+              closingFloat = false;
               peeking = true;
               // Capture the collapsed template now -- while the column is still
               // collapsed -- so the frame can be pinned back to it the instant the
@@ -733,35 +773,40 @@ window.__ModuleLoader__.load({
               // reversed here.
               if (isCollapsed()) {
                 closingFloat = false;
+                collapsingToRail = false;
                 return;
               }
               const layout = ctx.get('layout');
               if (layout === undefined) {
                 closingFloat = false;
+                collapsingToRail = false;
                 return;
               }
               layout.toggleSidebar();
-              // The column has just been re-rendered as the collapsed rail. Drop
-              // the drawer's own inline geometry IMMEDIATELY, in this same task,
-              // before the browser can paint: the rail is 56px wide and opaque
-              // again, so leaving `position: fixed`/`width: 280px`/`opacity: 0` on
-              // it for another frame made the icon rail appear late -- and blink --
-              // after the collapse.
-              // The column has just been re-rendered as the collapsed rail. Drop
-              // the drawer's own inline geometry IMMEDIATELY, in this same task,
-              // before the browser can paint: the rail is 56px wide and opaque
-              // again, so leaving `position: fixed`/`width: 280px`/`opacity: 0` on
-              // it for another frame made the icon rail appear late -- and blink --
-              // after the collapse.
-              clearColumnInline();
-              // The collapse has landed, so the close animation no longer owns the
-              // pin: the collapsed template IS the pin target now. Clearing the
-              // flag and the pin before reconciling lets this very pass capture the
-              // collapsed template and restore the brand mark, instead of leaving
-              // the rail bare until the next observer tick (a one-frame blink).
-              closingFloat = false;
-              dropPinNow();
+              // Hand the collapse over to `syncToggle`: it keeps the drawer intact
+              // until `_collapsed` really lands (the shell fades the wide column for
+              // COLLAPSE_SETTLE_MS first on web), then clears the geometry and
+              // restores the brand mark in the very same pass. Clearing it here --
+              // right after the toggle call -- would let the wide column show again
+              // for a frame before the rail appears, which reads as the rail being
+              // painted twice.
+              collapsingToRail = true;
+              // Reconcile now for the already-collapsed case (desktop collapses
+              // synchronously, so `_collapsed` is present immediately).
               syncToggle();
+              // Safety net: if the shell never reports `_collapsed` (a remount, a
+              // lost observer callback), finish the close anyway rather than leaving
+              // the drawer's inline geometry on the column forever. The budget is
+              // generous so it never races a real two-step collapse: the shell's own
+              // settle delay is 150ms, so 900ms is comfortably past it.
+              window.setTimeout(() => {
+                if (!collapsingToRail) return;
+                collapsingToRail = false;
+                closingFloat = false;
+                clearColumnInline();
+                dropPinNow();
+                syncToggle();
+              }, 900);
             };
             if (floating) {
               window.setTimeout(collapse, FLOAT_DURATION_MS);
