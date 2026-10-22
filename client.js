@@ -560,6 +560,23 @@ window.__ModuleLoader__.load({
             });
           };
 
+          /** Remove the drawer's own inline geometry from the column. */
+          const clearColumnInline = () => {
+            const live = columnEl();
+            if (live === null) return;
+            for (const prop of ['position', 'left', 'top', 'bottom', 'height', 'width', 'z-index', 'transition', 'transform', 'opacity']) {
+              live.style.removeProperty(prop);
+            }
+          };
+
+          /** Drop the frame's grid-track pin, restoring React's own tracks. */
+          const dropPinNow = () => {
+            const frame = frameEl();
+            if (frame === null) return;
+            frame.style.removeProperty('--dsh-compact-left-cols');
+            frame.removeAttribute(FLOAT_ATTR);
+          };
+
           /**
            * Undo every inline change a floating peek made. When `animated` is set
            * the drawer first slides back out and only then drops its inline
@@ -578,23 +595,13 @@ window.__ModuleLoader__.load({
               column.style.setProperty('left', `${-FLOAT_SLIDE_PX}px`);
               column.style.setProperty('opacity', '0');
             }
-            const frame = frameEl();
-            const dropPin = () => {
-              if (frame === null) return;
-              frame.style.removeProperty('--dsh-compact-left-cols');
-              frame.removeAttribute(FLOAT_ATTR);
-            };
-            if (!options.keepPin) dropPin();
-            const clearInline = () => {
-              const live = columnEl();
-              if (live !== null) {
-                for (const prop of ['position', 'left', 'top', 'bottom', 'height', 'width', 'z-index', 'transition', 'transform', 'opacity']) {
-                  live.style.removeProperty(prop);
-                }
-              }
+            if (!options.keepPin) dropPinNow();
+            const finish = () => {
+              clearColumnInline();
               // The pin is dropped together with the drawer's own geometry, so the
-              // main area changes width exactly once, after the animation.
-              dropPin();
+              // main area changes width exactly once, after the animation. This is
+              // idempotent: the collapse path may already have dropped it.
+              dropPinNow();
               // The close animation owns the pin until here; release that claim so
               // later reconciliations behave normally.
               closingFloat = false;
@@ -603,17 +610,13 @@ window.__ModuleLoader__.load({
               // Bump the generation so a close that is overtaken by a fast
               // re-open does not strip the new drawer's inline geometry.
               const token = ++floatGeneration;
-              // Land the inline cleanup just AFTER the collapse has been requested
-              // (both are scheduled at FLOAT_DURATION_MS), so the pin is dropped
-              // once, after the column has already collapsed -- never while the
-              // drawer is still fading.
               window.setTimeout(() => {
                 if (token !== floatGeneration) return;
-                clearInline();
+                finish();
               }, FLOAT_DURATION_MS + 40);
             } else {
               floatGeneration += 1;
-              clearInline();
+              finish();
             }
             floatWidth = 0;
           };
@@ -641,18 +644,15 @@ window.__ModuleLoader__.load({
            * is how a pinned (clicked) peek becomes a normal expanded track again.
            */
           const syncToggle = () => {
-            // A floating drawer is authoritative over the class: while it floats,
-            // the shell can momentarily still carry `_collapsed` (its own state
-            // settles a frame later). Treating that stale class as "collapsed"
-            // would release the float mid-slide and let the two glyphs overlap.
+            // `closingFloat` means the close animation is still running and owns
+            // the frame pin. Only `releaseFloat`'s finish step may clear it: a
+            // reconciliation that cleared it while the pin was still up would let
+            // the next pass take the "not floating" branch and tear the drawer's
+            // inline geometry down mid-animation, which shows the icon rail early
+            // and makes it blink.
             const floating = isFloating();
-            const collapsed = isCollapsed() && !floating;
+            const collapsed = isCollapsed() && !(floating && !closingFloat);
             if (collapsed) {
-              // A collapsed column can never stay floating. This branch is only
-              // reached when `floating` was already false, so there is nothing to
-              // release here; clearing the flag is enough. (`releaseFloat` runs
-              // from the close path and from `releaseAll` on teardown.)
-              closingFloat = false;
               captureCollapsedTemplate();
             } else {
               cacheBrandMark();
@@ -741,12 +741,26 @@ window.__ModuleLoader__.load({
                 return;
               }
               layout.toggleSidebar();
-              // Keep `closingFloat` set: the column now reports collapsed, but the
-              // pinned inline state is still on the frame for a few more ms. If
-              // this flag were cleared here, the very next `syncToggle` would take
-              // the "not floating" branch and release the pin while the collapsed
-              // grid is still settling. The cleanup timer (FLOAT_DURATION_MS + 40)
-              // drops the pin and clears the flag together.
+              // The column has just been re-rendered as the collapsed rail. Drop
+              // the drawer's own inline geometry IMMEDIATELY, in this same task,
+              // before the browser can paint: the rail is 56px wide and opaque
+              // again, so leaving `position: fixed`/`width: 280px`/`opacity: 0` on
+              // it for another frame made the icon rail appear late -- and blink --
+              // after the collapse.
+              // The column has just been re-rendered as the collapsed rail. Drop
+              // the drawer's own inline geometry IMMEDIATELY, in this same task,
+              // before the browser can paint: the rail is 56px wide and opaque
+              // again, so leaving `position: fixed`/`width: 280px`/`opacity: 0` on
+              // it for another frame made the icon rail appear late -- and blink --
+              // after the collapse.
+              clearColumnInline();
+              // The collapse has landed, so the close animation no longer owns the
+              // pin: the collapsed template IS the pin target now. Clearing the
+              // flag and the pin before reconciling lets this very pass capture the
+              // collapsed template and restore the brand mark, instead of leaving
+              // the rail bare until the next observer tick (a one-frame blink).
+              closingFloat = false;
+              dropPinNow();
               syncToggle();
             };
             if (floating) {
