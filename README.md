@@ -268,6 +268,4 @@ Current version **0.1.0** (`package.json`). Development milestones (from the rep
 
 ## License
 
-This project is intended for open source. A license file has not yet been added — see the
-repository's `LICENSE` for the terms once it is published. Until then, all rights are
-reserved by the author and the code is shared for review only.
+Released under the [MIT License](LICENSE). See the `LICENSE` file for the full text.

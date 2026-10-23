@@ -176,4 +176,4 @@ Windows 上 `$HOME` 即 `%USERPROFILE%`。
 
 ## License
 
-本项目面向开源。许可证文件尚未正式添加——待发布后请参阅仓库中的 `LICENSE`。在此之前，所有权利归作者保留，代码仅供审阅。
+本项目基于 [MIT 许可证](LICENSE) 发布，完整条款见 `LICENSE` 文件。

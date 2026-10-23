@@ -3,6 +3,17 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Collapsed sidebar preview that expands on hover or by touching the left edge.",
+  "license": "MIT",
+  "author": "the dsh-toggle-leftside authors",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "sidebar",
+    "cordis",
+    "hover",
+    "peek"
+  ],
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
