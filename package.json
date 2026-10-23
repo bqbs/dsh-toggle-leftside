@@ -1,9 +1,8 @@
 {
-  "name": "@local/dsh-compact-left",
+  "name": "dsh-toggle-leftside",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "Renders a column of panel icons in the sidebar rail on Windows, where the shipped shell hides it.",
+  "description": "Collapsed sidebar preview that expands on hover or by touching the left edge.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

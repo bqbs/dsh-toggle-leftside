@@ -1,208 +1,273 @@
-# dsh-compact-left
+# dsh-toggle-leftside
 
 English | [中文](README.zh.md)
 
-A DSH client plugin that adds hover-to-peek to the collapsed left sidebar.
+> A DSH client plugin that adds **hover-to-peek** to the **collapsed** left sidebar.
 
 The shipped shell treats the sidebar as a binary `closed ⟷ expanded` toggle and
 has no preview state. This plugin drives that same `ctx.layout.toggleSidebar()`
-action from pointer focus, adding a temporary middle state.
+action from pointer focus, adding a temporary middle state, and while it is open
+it renders the sidebar as a **floating drawer** on top of the main area so the
+main area is never squeezed.
 
-## Behaviour
+## Contents
 
-```
-COLLAPSED ──hover the left edge for 150ms──────▶ PEEK
-PEEK      ──pointer leaves for 200ms──────────▶ COLLAPSED
-PEEK      ──click the toggle──────────────────▶ PINNED
-PINNED    ──click the toggle──────────────────▶ COLLAPSED   (shipped behaviour)
-```
+- [🚀 Installation (2-minute setup)](#🚀-installation-2-minute-setup)
+- [Features](#features)
+- [Interaction & effect](#interaction--effect)
+- [Keyboard & accessibility](#keyboard--accessibility)
+- [What stays native](#what-stays-native)
+- [Implementation notes](#implementation-notes)
+- [Known limitations](#known-limitations)
+- [Install & uninstall (full)](#install--uninstall-full)
+- [Development & testing](#development--testing)
+- [Version history](#version-history)
+- [Requirements](#requirements)
+- [License](#license)
 
-- **PEEK** is a temporary expansion rendered as a **floating drawer**: the
-  sidebar is lifted out of the grid flow (`position: fixed`) and overlays the
-  main area, which keeps its full, unsqueezed width. The pointer can dwell inside
-  to select items, and leaving collapses it again. Opening and closing are
-  animated (slide + fade, 180ms) on the drawer only — the main area never moves.
-- **PINNED** is the shell's own expanded state. The plugin keeps no flag for it,
-  so leaving a pinned sidebar alone can never collapse it. Only an expansion the
-  plugin itself started is ever undone by it. A pinned sidebar drops the float and
-  becomes a normal expanded grid track, so it squeezes the main area exactly like
-  the shipped shell does.
-- The peek trigger is a hot strip along the window's left edge, plus the toggle
-  button, so the pointer does not have to land on the small button. The strip is
-  **as wide as the collapsed column**: on web that is the visible icon rail
-  (~56px), so hovering any icon opens the drawer; on desktop the collapsed column
-  has no width, so the strip falls back to a fixed, wider 28px.
-- The plugin draws no tooltip of its own. While a peek is up it retires the
-  shell's tooltip bubble, which would otherwise surface over the column the peek
-  just opened.
+## 🚀 Installation (2-minute setup)
 
-## The collapsed toggle shows the brand mark
+Prerequisite: a DSH Profile that runs the Web client (the desktop App is itself a
+Web client).
 
-The shipped toggle renders a generic panel-left glyph. On the non-Windows rail
-the shell swaps in the product's brand mark, but in the Windows caption it keeps
-the glyph — so a collapsed column there reads as "some panel" instead of as the
-product. This plugin fills that gap.
-
-The artwork is **cloned from the shell's own brand row**
-(`[data-slot="sidebar.brand.mark"]`), never copied: there is no second source of
-truth to drift from. The shell mounts that row only while the column is wide, so
-the artwork is cached during a peek and reused while collapsed — and until the
-first peek there is nothing to show, in which case the icon is left exactly as
-shipped rather than replaced with a look-alike.
-
-Three guards keep it from ever doubling up:
-
-1. the mark is removed as soon as the column opens;
-2. if the shell already renders its own brand mark on the toggle, none is added;
-3. with no artwork to clone, the icon is untouched.
-
-React owns the button's children, so the mark is a sibling the shell never
-touches and the shipped glyph is hidden by CSS rather than deleted. The shell's
-own hover rule still flips the icon to the panel glyph on hover, so the gesture
-keeps reading as "open the sidebar".
-
-## Why pointer geometry is computed from live boxes
-
-The shipped shell has no stable API for "is the sidebar open". The plugin reads
-it from the sidebar's own DOM:
-
-- Class names are CSS-module hashes, so they are matched by suffix
-  (`_root`, `_collapsed`, `_toggle`, `_frame`) rather than pinned to one build.
-- On Windows the collapsed toggle is `position: fixed` in the caption while the
-  expanded column is a grid track, so "inside" is the union of both boxes,
-  measured on every event and timer instead of from a cached rectangle.
-- A window-leave (`pointerleave`) must not re-measure the last position: the
-  final `pointermove` was still on the column, and re-reading it would conclude
-  the pointer never left. That path decides on its own evidence instead.
-
-## How the floating drawer avoids squeezing the main area
-
-A peek still drives the shell's own `toggleSidebar()`, so the column expands and
-React mounts the full navigation the shell only renders when wide — but the plugin
-does not leave it as a widening grid track. The frame's direct grid items are the
-sidebar column, the center, the right column and the bottom row as **separate**
-items, so the trick is to keep the sidebar column *in* flow (its track held at the
-collapsed template) while lifting only its **inner** `*_root` content out as an
-overlay. While a peek is up:
-
-- the frame's grid tracks are held at the **captured collapsed template** — the
-  first track keeps the collapsed rail width (`0` on Windows/macOS, `56` on the web
-  rail), and the center `minmax(400px,1fr)` and right tracks are preserved verbatim.
-  React re-solves and overwrites `gridTemplateColumns` inline with a widened sidebar
-  track on every commit, so an inline override would lose that race; the track list
-  instead travels through a custom property consumed by a stylesheet `!important`
-  rule, which outranks a normal inline style and is stable across commits; and
-- the inner `*_root` column is floated with `position: fixed` (left `0`, top set to
-  the frame's `padding-top` so it clears the titlebar, a width measured from the
-  just-expanded column, and `transition: none` to suppress the shell's expand width
-  tween). Its height is set explicitly to `calc(100vh - <titlebar>)`, never left to a
-  `top`+`bottom` pair: the shell's `*_root` already carries `height: 100%`, and an
-  explicit height wins over the stretch, which would push the footer — and with it the
-  user name and avatar — below the viewport on desktop. The outer `sidebarCol` stays in
-  flow behind it, narrowed to the collapsed track and visually empty.
-
-The drawer adds **no styling of its own** — no box-shadow, no border, no background.
-It is the shell's own sidebar column, so it must look exactly like the sidebar does
-when expanded; any extra chrome makes it read as a separate layer. (An earlier build
-shadowed `div[class*="_root"]`, a selector broad enough to hit every `*_root` panel in
-the frame, which is why unrelated panes appeared layered.)
-
-The center therefore keeps exactly its collapsed position and width, and the drawer
-(which is wider than the rail) simply covers its left edge. Two mistakes are both
-avoided: floating the **outer** `sidebarCol` out of flow would let the center
-auto-place into the first track and collapse to zero (a flash-and-vanish); and
-leaving the widened sidebar track would shove the center aside (a squeeze).
-
-`resize` re-pins the frame and re-measures the column so the drawer tracks the
-window. A click that pins the peek removes the float (`peeking` becomes false) and
-the column resumes the shell's normal expanded track — which is why a pinned sidebar
-does squeeze the main area, exactly as the shipped shell does.
-
-## Why the animation never moves the workspace
-
-The drawer animates with a short slide (`left: -12px → 0`) and a fade
-(`opacity 0 → 1`) over 180ms. Only the drawer is animated: the frame's grid tracks
-are pinned with `transition: none`, so the center column keeps its collapsed
-geometry for the whole motion and nothing in the workspace shifts. Closing plays the
-same motion in reverse and collapses the column only after it finishes, so the close
-reads as a slide-out instead of a snap. The entrance plays once per peek — the
-pointer-move reconciliation refreshes geometry without replaying it, which would
-otherwise make the drawer blink as the mouse moves.
-
-**The slide must not use `transform`.** On desktop the shell pins the toggle with
-`position: fixed; left: 12px`, i.e. against the **viewport**. Per CSS, a `transform`
-on an ancestor turns that ancestor into the containing block for `position: fixed`
-descendants — so animating the drawer with a transform re-anchored the toggle to the
-drawer and made it move while the peek was open. The slide therefore animates `left`,
-an ordinary layout offset that creates no containing block. (A fixed element's
-negative `left` does not extend the document's scrollable area, so the 12px overshoot
-cannot introduce a horizontal scrollbar.)
-
-**The pin must survive the close animation.** Releasing the grid pin at the start of
-the close (the obvious place, next to the fade-out) restores React's widened sidebar
-track while the drawer is still fading, so the main area jumps wide and then snaps
-back when the column collapses — a visible flicker on both web and desktop. The pin
-is therefore held by a `closingFloat` flag for the whole animation and dropped in the
-same step as the drawer's inline geometry, after the collapse has landed. A floating
-drawer is also authoritative over the shell's `_collapsed` class: the shell settles
-that class a frame later, and treating a lingering `_collapsed` as "collapsed" would
-release the float mid-slide.
-
-## Why the brand mark is not swapped while peeking
-
-The brand-mark swap belongs to the **collapsed rail** only. A peek floats the
-expanded column, and on desktop the shell keeps rendering its own toggle glyph in the
-caption while the column is wide. An unguarded swap therefore drew this plugin's
-brand mark next to the shell's glyph, and the two overlapped. `syncBrandMark` treats
-"floating" as expanded and removes the mark for the duration of the peek, restoring
-the swap once the column is collapsed again.
-
-## Why the drawer never covers the shell's menus
-
-The drawer's `z-index` is deliberately **low** (25): above the frame's own overlay
-layer (20) so it paints over the center column, but below every shell menu layer —
-the icon menu at `70`, dropdown/hovercard lists at `100`/`101`, and the portaled
-menu, tooltip and toast layer at `1100`. Those menus are portals under `body`, so
-only a drawer with a *lower* z-index lets them paint on top. An earlier build used a
-near-maximum value, which is why the workspace's view menu and the session menus were
-hidden behind the drawer.
-
-## Layout
-
-| Path | Purpose |
-| --- | --- |
-| `index.js` | Host half of the bundle; the Client module owns rendering. |
-| `client.js` | The whole client plugin: peek state machine, tooltip restraint, settings section. |
-| `cordis.patch.yml` | Inserts the plugin into the DSH loader. |
-| `locale/*.json` | Plugin title and description. |
-| `icon.svg` | Sidebar artwork. |
-
-## Settings
-
-The plugin registers one switch under *Settings → Compact left rail*, stored in
-`localStorage` as `dsh-compact-left:hoverPeek`. It is read at the moment of use,
-so toggling it takes effect on the next hover without a reload.
-
-## Development
-
-The plugin is linked into a DSH profile rather than published. Add a `link:`
-dependency to that profile's `package.json` and install it:
+1. Add a `link:` dependency in that Profile's `package.json`, pointing at this repo:
 
 ```json
 "dependencies": {
-  "@local/dsh-compact-left": "link:<path to this repo>"
+  "dsh-toggle-leftside": "link:<absolute path to this repo>"
 }
 ```
 
-Once installed, the profile resolves it as a link to this repository:
+2. Install inside the Profile directory (so `node_modules/dsh-toggle-leftside`
+   links back to this repo):
+
+```bash
+pnpm install
+# or pnpm i
+```
+
+3. Reload the DSH window (both the desktop App and the web client use "reload window").
+
+4. Open **Settings → Compact left rail** and confirm *Hover to peek* is on (it is by default).
+
+Verify: collapse the sidebar, move the pointer to the window's left edge or onto any
+collapsed icon and dwell ~150ms — the sidebar should temporarily expand as a floating
+drawer; moving away ~200ms auto-collapses it, and clicking the toggle pins it fully open.
+
+## Features
+
+- **Hover preview (PEEK):** near the left edge while collapsed, the sidebar temporarily
+  expands while the main area keeps its full width.
+- **Click to pin (PINNED):** clicking the toggle during a preview turns it into the
+  native "pinned open" state; a second click collapses it.
+- **Collapsed brand mark:** puts the product brand mark on the collapsed toggle in the
+  Windows caption (the non-Windows rail already shows it natively and is left alone).
+- **Settings switch:** a toggle under *Settings → Compact left rail*, stored in
+  `localStorage`, effective immediately with no reload.
+- **Tooltip restraint:** while a preview is up it empties the shell's own icon tooltip
+  so it does not surface over the column it just opened.
+
+## Interaction & effect
+
+State machine:
 
 ```
-$HOME/.dsh/profiles/<profile>/node_modules/@local/dsh-compact-left
-  -> <path to this repo>
+COLLAPSED ──hover the left edge for 150ms──▶ PEEK
+PEEK      ──pointer leaves for 200ms──────▶ COLLAPSED
+PEEK      ──click the toggle──────────────▶ PINNED
+PINNED    ──click the toggle──────────────▶ COLLAPSED   (shipped behaviour)
+```
+
+- **Floating drawer:** on entering PEEK the sidebar's inner `*_root` is lifted out of the
+  grid flow (`position: fixed`) and overlaid on the main area, which keeps its collapsed
+  geometry and width.
+- **Animation:** the drawer opens/closes with a 180ms slide (`left: -12px → 0`) + fade
+  (`opacity 0 → 1`), animating the drawer only — the main area never moves. The entrance
+  plays once per peek.
+- **Trigger zone:** a hot strip along the window's left edge plus the toggle itself. The
+  strip is as wide as the collapsed column when that column is visible (the web icon rail,
+  ~56px, so any icon opens it); on desktop the collapsed column has no width, so it falls
+  back to a fixed, wider 28px edge strip.
+- **Layering:** the drawer uses `z-index: 25` — above the main-area overlay (20) but below
+  every shell menu layer (icon menu 70, dropdown/hovercard 100/101, and the portaled
+  menu/tooltip/toast layer 1100), so shell menus always paint on top of the drawer.
+
+## Keyboard & accessibility
+
+- **Pointer-driven:** the hover preview is driven by `pointermove` / `pointerleave` and has
+  no dedicated keyboard shortcut. But it is built **on top of the native toggle**, so the
+  shell's own keyboard affordances (Tab to focus the toggle, Enter/Space to toggle, arrow
+  navigation inside the nav) are unaffected.
+- **Decorative noise suppressed:** the cloned brand mark is wrapped in an `aria-hidden="true"`
+  container (visual only), and the settings switch carries an `aria-label`.
+- **No special-casing:** the plugin does not adapt to `prefers-reduced-motion` (it still
+  plays the 180ms motion), nor does it add a touch-specific gesture like long-press to open
+  (touch pointer semantics differ from hover, so previews mostly trigger from edge drags).
+
+> Note: the two points above are known limitations — see "Known limitations" below.
+
+## What stays native
+
+- **PINNED is the shell's own expanded state:** the plugin keeps no flag for it, so leaving
+  a pinned sidebar alone can never collapse it — only an expansion this plugin started (PEEK)
+  is ever undone. A pinned sidebar drops the float and becomes a normal expanded grid track,
+  squeezing the main area exactly as the shipped shell does.
+- **The drawer is the shell's own sidebar column:** it adds no shadow/border/background, so
+  it looks identical to the shell's "wide" state and never reads as a separate layer.
+- **Toggle hover flip preserved:** the shell's own rule re-shows the panel glyph on hover;
+  the plugin reuses it, so the gesture still reads as "open the sidebar".
+- **Reuses the native action:** PEEK drives `ctx.layout.toggleSidebar()`, so React mounts
+  the full navigation the shell only renders when wide — identical to a native expand.
+- **Non-Windows brand swap untouched:** the shell already shows the brand mark on the
+  non-Windows rail; the plugin only fills the gap in the Windows caption.
+- **Focus order, Tab order, and screen-reader access to the nav** all follow the shell
+  natively; the plugin does not rewrite them.
+
+## Implementation notes
+
+- **Live pointer geometry:** the shell has no stable "is the sidebar open" API, so the
+  plugin reads it from the sidebar's own DOM. Class names are CSS-module hashes, matched by
+  suffix (`_root`/`_collapsed`/`_toggle`/`_frame`) rather than pinned to one build. On
+  Windows the collapsed toggle is `position: fixed` in the caption while the expanded column
+  is a grid track, so "inside" is the union of both boxes, measured on every event/timer
+  instead of from a cached rectangle. A `pointerleave` must not re-measure the last position
+  (the final `pointermove` was still on the column), or it would conclude the pointer never
+  left.
+- **Floating drawer without squeezing:** a custom property plus a stylesheet `!important`
+  rule pins the frame's grid tracks to the **captured collapsed template** (first track keeps
+  the collapsed width — 0 on desktop/macOS, 56 on the web rail — and the center/right tracks
+  are preserved verbatim). React re-solves `gridTemplateColumns` to the widened value on every
+  commit, so an inline override would lose the race; `!important` outranks a normal inline
+  style and React never writes the custom property, so it is stable. The inner `*_root` is
+  floated with `position: fixed`; the outer `sidebarCol` stays in flow, narrowed to the
+  collapsed track. Height is set explicitly to `calc(100vh - <titlebar>)` rather than
+  `top`+`bottom`, or the footer (user name/avatar) would be pushed out of view.
+- **Animation never moves the workspace:** the frame's grid tracks are pinned with
+  `transition: none`, so only the drawer animates. The slide uses `left`, **not
+  `transform`** — on desktop the shell pins the toggle with `position: fixed; left: 12px`
+  against the viewport, and a `transform` on an ancestor becomes the containing block for
+  fixed descendants, re-anchoring the toggle to the drawer and moving it. A fixed element's
+  negative `left` does not extend the scrollable area, so the 12px overshoot introduces no
+  horizontal scrollbar.
+- **The pin survives the close animation:** during the 180ms close, a `closingFloat` flag
+  holds the grid pin and clears it together with the drawer's inline geometry only after the
+  column has truly collapsed — otherwise the main area would jump wide mid-fade and snap
+  back. On web the shell collapses in two steps (`wide` lingers ~150ms while the wide column
+  fades, and `_collapsed` lands a frame later); `collapsingToRail` keeps the drawer's inline
+  geometry intact until then, otherwise the rail paints twice. A `floatGeneration` token
+  prevents a fast re-open from stripping the fresh drawer's geometry.
+- **Brand mark cloned, not copied:** cloned from the shell's own brand row
+  `[data-slot="sidebar.brand.mark"]`, so there is no second source of truth to drift. The
+  shell mounts that row only when wide, so it is cached on every peek and reused while
+  collapsed; before the first peek there is nothing to show, so the icon is left as shipped.
+  Three guards avoid a doubled mark: removed on open, skipped if the shell already shows its
+  own, and left untouched if no SVG is available to clone.
+- **Tooltip restraint:** the shell's tooltip is a portal under `body`, unreachable by a
+  descendant selector, so the visible bubble's text is emptied directly.
+
+## Known limitations
+
+- **Pointer-driven only:** no keyboard shortcut triggers a peek; on touch, because hover
+  semantics differ, previews mostly rely on edge drags and feel less fluid than desktop hover.
+- **Depends on shell DOM structure:** elements are located by class-name suffix. Renamed
+  hashes are tolerated, but a structural change (e.g. how grid items are split) could break it.
+- **Narrow desktop trigger:** on desktop the collapsed column has no width, so the trigger
+  falls back to a 28px left-edge strip and must be hugged precisely.
+- **Brand mark missing on first paint:** the collapsed-toggle brand mark only appears after
+  the first peek caches the SVG; before any hover the original icon is shown.
+- **Preference isolated per browser:** the switch lives in `localStorage` and is not synced
+  across devices/browsers.
+- **Single sidebar column only:** assumes one left column and does not handle multi-column or
+  dynamic add/remove layouts.
+- **No reduced-motion handling:** does not honor the system "reduce motion" preference and
+  still plays the animation.
+- **Reload required after edits:** `client.js` is loaded through `window.__ModuleLoader__` from
+  a graph snapshot, so changes need a window reload.
+- **No-op when already expanded:** when the sidebar is already open, the plugin adds nothing
+  (PEEK can only start from the collapsed state).
+
+## Install & uninstall (full)
+
+### Install
+
+1. The repo needs no build (`client.js` is a single bundle loaded via
+   `window.__ModuleLoader__`; `index.js` is just a host placeholder).
+2. In the target Profile's `package.json`, add (use an absolute or relative path to this repo):
+
+```json
+"dependencies": {
+  "dsh-toggle-leftside": "link:/abs/path/to/dsh-toggle-leftside"
+}
+```
+
+3. Run `pnpm install` in that Profile directory so `node_modules/dsh-toggle-leftside`
+   links back to this repo:
+
+```
+$HOME/.dsh/profiles/<profile>/node_modules/dsh-toggle-leftside -> <this repo>
 ```
 
 On Windows, `$HOME` is `%USERPROFILE%`.
 
-`client.js` is loaded as a single bundle through `window.__ModuleLoader__`, so in
-a running DSH it is resolved from a graph snapshot: **edit it, then reload the
-window** to see a change.
+4. Reload the DSH window. `cordis.patch.yml` and the `dsh.bundle.patch` / `dsh.client` fields
+   in `package.json` make the shell inject and immediately enable this plugin.
+
+> You can also install/enable this repo as a local bundle from the DSH Profile management card
+> (equivalent to the `link:` dependency above).
+
+### Uninstall
+
+1. Remove `dsh-toggle-leftside` from the Profile's `package.json`.
+2. Run `pnpm install` in the Profile directory (or manually remove
+   `node_modules/dsh-toggle-leftside`).
+3. Reload the window. The plugin is no longer injected and the collapsed state reverts to the
+   shell's native behavior.
+
+## Development & testing
+
+- **No bundler:** the repo *is* the plugin — `client.js` is a single-file bundle.
+- **Local iteration:** link the repo into a dev Profile as above; after editing `client.js`,
+  **reload the window** to see the change (it comes from a graph snapshot, so HMR is not
+  available).
+- **Diagnostic tooling:** the `_diag/` directory contains layout-regression and probe scripts
+  (e.g. `regress.cjs`, and the `*-client.js` / `probe_tooltip.js` helpers) for re-checking
+  geometry and layering against a running shell.
+- **Manual verification checklist:**
+  1. Collapsed + hover the left edge → drawer floats out within ~150ms; main area width unchanged;
+  2. Items inside the drawer click normally; moving away ~200ms auto-collapses;
+  3. Click the toggle during a preview → pinned open (squeezes the main area), click again → collapsed;
+  4. Shell menus (view menu, session menu) still paint above the drawer during open/close;
+  5. Windows caption toggle shows the brand mark; hovering flips back to the panel glyph;
+  6. Resizing the window re-measures the column so the drawer tracks it;
+  7. With the settings switch off, the next hover no longer previews.
+- **No automated tests:** there is currently no unit or end-to-end suite; regression is manual
+  via the checklist and the `_diag/` scripts.
+
+## Version history
+
+Current version **0.1.0** (`package.json`). Development milestones (from the repo's commits):
+
+| Commit | Change |
+| --- | --- |
+| `aeea704` | Add hover-to-peek for the collapsed left sidebar |
+| `2f8356c` | Add English & Chinese README documentation |
+| `d8ac82c` | Show the brand mark on the collapsed toggle |
+| `d28b4cb` | Render the peek as a floating drawer over the main area |
+| `e28c03f` | Drop the drawer geometry in the frame the peek collapses |
+| `d34ccac` | Hold the drawer until the web rail actually lands (avoid double paint) |
+
+## Requirements
+
+- A DSH Profile running the **Web client** (both the desktop App and the web client qualify,
+  since they share the Web client; `package.json` sets `dsh.client.platform` to `web`).
+- A shell that supports **Cordis patch** injection (`cordis.patch.yml` + the
+  `dsh.bundle.patch` in `package.json`) and client loading via `window.__ModuleLoader__`.
+- Browser support for: `MutationObserver`, `requestAnimationFrame`, CSS custom properties,
+  `position: fixed`, and Pointer Events.
+- A Node.js / pnpm environment for the `link:` install (only the install step needs it).
+
+## License
+
+This project is intended for open source. A license file has not yet been added — see the
+repository's `LICENSE` for the terms once it is published. Until then, all rights are
+reserved by the author and the code is shared for review only.

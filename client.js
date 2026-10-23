@@ -1,10 +1,10 @@
 window.__ModuleLoader__.load({
-  id: '@local/dsh-compact-left',
+  id: 'dsh-toggle-leftside',
   factory(require) {
     const React = require('react');
 
     /**
-     * Hover-to-peek for the collapsed sidebar.
+     * Hover-to-peek for the collapsed left sidebar.
      *
      * The shipped shell exposes `ctx.layout.toggleSidebar()` as a binary
      * closed ⟷ expanded toggle and has no preview state. This plugin adds a
@@ -60,7 +60,7 @@ window.__ModuleLoader__.load({
      * across restarts without needing a Host route; the value is read at every
      * pointer event so flipping it takes effect immediately, with no reload.
      */
-    const PREF_KEY = 'dsh-compact-left:hoverPeek';
+    const PREF_KEY = 'dsh-toggle-leftside:hoverPeek';
     const readEnabled = () => {
       try {
         return window.localStorage.getItem(PREF_KEY) !== 'off';
@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
      * Attribute marking the toggle button whose shipped panel-left icon this
      * plugin has replaced with the brand mark.
      */
-    const BRANDED_ATTR = 'data-dsh-compact-left-branded';
+    const BRANDED_ATTR = 'data-dsh-toggle-leftside-branded';
     /**
      * Attribute the shell puts on the element that renders the brand mark, and
      * the selector this plugin reads to find the brand artwork.
@@ -110,14 +110,14 @@ window.__ModuleLoader__.load({
      * The attribute documents the state and keeps the rule available for any
      * bubble that does mount inside the column.
      */
-    const PEEK_ATTR = 'data-dsh-compact-left-peek';
+    const PEEK_ATTR = 'data-dsh-toggle-leftside-peek';
     /**
      * Marker on the layout frame while a peek is rendered as a floating
      * drawer. While set, the sidebar column is taken out of the grid flow
      * (`position: fixed`) and the main area keeps its full width, so the
      * peek never squeezes the content -- it overlays it instead.
      */
-    const FLOAT_ATTR = 'data-dsh-compact-left-float';
+    const FLOAT_ATTR = 'data-dsh-toggle-leftside-float';
     /**
      * The collapsed toggle carries the brand mark instead of the shipped panel
      * glyph. The shell already ships a rule that does exactly this for the
@@ -135,7 +135,7 @@ window.__ModuleLoader__.load({
       // The shell's hover rule re-shows the panel glyph; match it so hover
       // still flips the icon, exactly as it does on the non-Windows rail.
       `[${BRANDED_ATTR}]:hover ._2H3hWW_panelIcon { display: inline !important; }`,
-      `[${BRANDED_ATTR}]:hover [data-dsh-compact-left-brand-mark] { display: none !important; }`,
+      `[${BRANDED_ATTR}]:hover [data-dsh-toggle-leftside-brand-mark] { display: none !important; }`,
       // NOTE: the drawer deliberately adds NO box-shadow (or any other chrome).
       // The drawer is the shell's own sidebar column, lifted out of the grid; the
       // shell already paints its border and background, and adding a shadow made
@@ -150,7 +150,7 @@ window.__ModuleLoader__.load({
       // list itself travels through a custom property, which React never writes.
       // `transition: none` suppresses the shell's expand tween so the center does
       // not animate either.
-      `[${FLOAT_ATTR}] { grid-template-columns: var(--dsh-compact-left-cols) !important; transition: none !important; }`,
+      `[${FLOAT_ATTR}] { grid-template-columns: var(--dsh-toggle-leftside-cols) !important; transition: none !important; }`,
     ].join('\n');
 
     return {
@@ -165,8 +165,8 @@ window.__ModuleLoader__.load({
         ctx.effect(() => {
           const doc = document;
           const style = doc.createElement('style');
-          style.dataset.plugin = '@local/dsh-compact-left';
-          style.dataset.pluginCss = '@local/dsh-compact-left/hover-peek.css';
+          style.dataset.plugin = 'dsh-toggle-leftside';
+          style.dataset.pluginCss = 'dsh-toggle-leftside/hover-peek.css';
           style.textContent = CSS;
           doc.head.appendChild(style);
 
@@ -320,7 +320,7 @@ window.__ModuleLoader__.load({
           const syncBrandMark = () => {
             const toggle = toggleEl();
             if (toggle === null) return;
-            const existing = toggle.querySelector('[data-dsh-compact-left-brand-mark]');
+            const existing = toggle.querySelector('[data-dsh-toggle-leftside-brand-mark]');
             // The brand-mark swap belongs to the COLLAPSED rail only. A peek floats
             // the expanded column, and on desktop the shell keeps rendering the
             // collapsed toggle glyph in the caption while the column is wide -- so
@@ -348,7 +348,7 @@ window.__ModuleLoader__.load({
             }
             toggle.setAttribute(BRANDED_ATTR, '');
             const holder = doc.createElement('span');
-            holder.setAttribute('data-dsh-compact-left-brand-mark', '');
+            holder.setAttribute('data-dsh-toggle-leftside-brand-mark', '');
             holder.setAttribute('aria-hidden', 'true');
             holder.style.cssText = 'display:inline-flex;justify-content:center;align-items:center;flex:none';
             holder.appendChild(source.cloneNode(true));
@@ -465,7 +465,7 @@ window.__ModuleLoader__.load({
             if (frame === null || collapsedTemplate === null) return;
             const tracks = collapsedTemplate.split(/\s+/).filter(Boolean);
             if (tracks.length < 2) return;
-            setStyle(frame, '--dsh-compact-left-cols', tracks.join(' '));
+            setStyle(frame, '--dsh-toggle-leftside-cols', tracks.join(' '));
             if (!frame.hasAttribute(FLOAT_ATTR)) frame.setAttribute(FLOAT_ATTR, '');
           };
 
@@ -581,7 +581,7 @@ window.__ModuleLoader__.load({
           const dropPinNow = () => {
             const frame = frameEl();
             if (frame === null) return;
-            frame.style.removeProperty('--dsh-compact-left-cols');
+            frame.style.removeProperty('--dsh-toggle-leftside-cols');
             frame.removeAttribute(FLOAT_ATTR);
           };
 
@@ -943,7 +943,7 @@ window.__ModuleLoader__.load({
             }
             for (const el of doc.querySelectorAll('[' + BRANDED_ATTR + ']')) {
               el.removeAttribute(BRANDED_ATTR);
-              el.querySelector('[data-dsh-compact-left-brand-mark]')?.remove();
+              el.querySelector('[data-dsh-toggle-leftside-brand-mark]')?.remove();
             }
             style.remove();
             doc.removeEventListener('pointermove', onPointerMove);
@@ -954,7 +954,7 @@ window.__ModuleLoader__.load({
               window.removeEventListener('resize', onResize);
             }
           };
-        }, 'dsh-compact-left: hover to peek');
+        }, 'dsh-toggle-leftside: hover to peek');
 
         // ------------------------------------------------------------------
         // Settings page: one switch for the hover feature.
@@ -977,7 +977,7 @@ window.__ModuleLoader__.load({
 
         ctx.slots.inject('settings.section', () => ctx.slots.register({
           name: 'settings.section',
-          id: 'dsh-compact-left',
+          id: 'dsh-toggle-leftside',
           order: 111,
           label: () => labelSet().title,
         }, function CompactLeftSettings() {

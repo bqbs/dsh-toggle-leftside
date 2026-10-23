@@ -1,3 +1,3 @@
 - insert:
-    - id: dsh-compact-left
-      name: '@local/dsh-compact-left'
+    - id: dsh-toggle-leftside
+      name: 'dsh-toggle-leftside'

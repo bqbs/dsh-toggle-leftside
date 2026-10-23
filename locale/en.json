@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Compact Left Rail",
-    "description": "Shows the panel icons and Settings in the collapsed sidebar rail on Windows, where the shipped shell hides them."
+    "title": "Collapsed Sidebar Preview",
+    "description": "Expands on hover or by touching the left edge."
   }
 }
