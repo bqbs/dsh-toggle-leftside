@@ -15,3 +15,7 @@ Thumbs.db
 
 # Dependencies are linked from a DSH profile and are never vendored here.
 node_modules/
+
+# Auto-generated plugin integrity snapshot (Merkle root of packed files).
+# Rewritten by the DSH toolchain on every build, so never track it.
+.merkle-snapshot.json

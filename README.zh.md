@@ -8,41 +8,26 @@ DSH 官方外壳把侧边栏当作二元的 `收起 ⟷ 展开` 开关，没有�
 
 ## 目录
 
-- [🚀 安装（2 分钟上手）](#安装2-分钟上手)
+- [安装](#安装)
 - [功能](#功能)
 - [交互与效果](#交互与效果)
-- [键盘与无障碍](#键盘与无障碍)
-- [和原生一致的部分](#和原生一致的部分)
-- [实现要点](#实现要点)
 - [已知限制](#已知限制)
-- [安装与卸载（完整）](#安装与卸载完整)
-- [开发与测试](#开发与测试)
 - [版本历史](#版本历史)
-- [要求](#要求)
 - [License](#license)
 
-## 🚀 安装（2 分钟上手）
+## 安装
 
-前提：你有一个启用了 Web 客户端（桌面端 App 实际也是 Web 客户端）的 DSH Profile。
-
-1. 在该 Profile 的 `package.json` 里加一条 `link:` 依赖，指向本仓库：
-
-```json
-"dependencies": {
-  "dsh-toggle-leftside": "link:<本仓库的绝对路径>"
-}
+### DSH 插件
+deepseek harness--> 插件 -->搜 `github:bqbs/dsh-toggle-leftside` --> 安装；
+###  指令
+- web
 ```
-
-2. 在 Profile 目录下安装依赖（让 `node_modules/dsh-toggle-leftside` 链接回本仓库）：
-
-```bash
-pnpm install
-# 或 pnpm i
+dsh plugin --profile web add github:bqbs/dsh-toggle-leftside
 ```
-
-3. 重新加载 DSH 窗口（桌面端 App 与网页端都是「重新加载窗口」）。
-
-4. 打开 **设置 → 左侧折叠栏**，确认「悬停展开侧边栏」已开启（默认开启）。
+- desktop
+```
+dsh plugin --profile desktop add github:bqbs/dsh-toggle-leftside
+```
 
 验证：把侧边栏收起，把鼠标移到窗口最左缘或任意折叠图标上停留约 150ms，侧边栏应临时展开为浮动抽屉；移开约 200ms 自动收起，点击折叠按钮则固定为完全展开。
 
@@ -52,7 +37,6 @@ pnpm install
 - **点击固定（PINNED）**：在预览态点击折叠按钮，把它变成和原生一致的「固定展开」；再点一次才收起。
 - **折叠态品牌标识**：在 Windows 标题栏的折叠按钮上补上产品品牌标识（非 Windows 轨道外壳本就显示，保持不变）。
 - **设置开关**：「设置 → 左侧折叠栏」下有一个开关，存于 `localStorage`，切换即时生效，无需刷新。
-- **tooltip 抑制**：预览展开期间收起外壳自己的图标气泡，避免它浮在刚展开的栏上方。
 
 ## 交互与效果
 
@@ -70,32 +54,6 @@ PINNED    ──点击折叠按钮─────────▶ COLLAPSED   （
 - **触发热区**：窗口左缘一条热区 + 折叠按钮本身。热区宽度与折叠列宽一致：Web 上即图标栏（约 56px），可悬停任意图标展开；desktop 上折叠列无宽度，回退为固定的 28px 边缘热区。
 - **层级**：抽屉 `z-index: 25`，高于主区域覆盖层（20），但低于所有外壳菜单层（图标菜单 70、下拉/悬浮卡 100/101、portal 菜单/提示/Toast 1100），所以外壳菜单始终画在抽屉之上。
 
-## 键盘与无障碍
-
-- **纯指针驱动**：插件的「悬停预览」依赖 `pointermove` / `pointerleave`，没有为它绑定键盘快捷键。但插件**完全建立在原生折叠按钮之上**，因此原生侧边栏的键盘可达性（Tab 聚焦折叠按钮、回车/空格切换、方向键在导航内移动等）不受影响。
-- **装饰元素降噪**：克隆出的品牌标识包在 `aria-hidden="true"` 的容器里，仅供视觉、不进入无障碍树；设置开关带 `aria-label`。
-- **未做特殊处理**：插件没有针对 `prefers-reduced-motion` 调整动画（仍播放 180ms 动效），也没有为触屏增加「长按展开」之类的替代手势（触屏上的 pointer 语义与悬停不同，预览主要靠贴边拖动触发）。
-
-> 说明：上述两点属于已知限制，详见下方「已知限制」。
-
-## 和原生一致的部分
-
-- **PINNED 就是外壳自己的展开态**：插件不为它保存任何标志位，因此鼠标离开已固定的侧边栏**永远不会**收起它——只有插件自己发起的 PEEK 才会被撤销。固定的侧边栏会取消浮动、变回普通展开网格轨道，并像外壳原生那样挤压主区域。
-- **抽屉就是外壳自己的侧边栏列**：不添加任何阴影/边框/背景，外观与外壳「宽」态完全一致，看起来不像另一层。
-- **折叠按钮的悬停翻面保留**：外壳自身规则在悬停时把图标翻回「面板」图形，插件沿用同一规则，使手势依旧读作「展开侧边栏」。
-- **复用原生动作**：PEEK 驱动 `ctx.layout.toggleSidebar()`，因此 React 挂载的是外壳仅在「宽」态才渲染的完整导航——和原生展开一模一样。
-- **非 Windows 轨道的品牌标识替换不变**：外壳已在非 Windows 图标栏上显示品牌标识，插件只在 Windows 标题栏补这个缺口。
-- **焦点、Tab 顺序、屏幕阅读器对导航的访问**：均沿用外壳原生逻辑，插件不改写。
-
-## 实现要点
-
-- **指针几何实时测量**：外壳没有「侧边栏是否展开」的稳定 API，插件从侧边栏自身 DOM 读取。类名是 CSS Module 哈希，因此按后缀匹配（`_root`/`_collapsed`/`_toggle`/`_frame`）而非绑定某次构建。Windows 上折叠按钮是 `position: fixed` 悬浮在标题栏、展开列是网格轨道，「是否在内」是两者并集，每个事件/定时器实时测量，不缓存矩形。`pointerleave` 不重测最后坐标（否则会误判「从未离开」、永远不收起）。
-- **浮动抽屉不挤压主区域**：用自定义属性 + 样式表 `!important` 把 frame 的网格轨道钉在**捕获到的折叠模板**上（首条轨道保持折叠宽度：desktop/macOS 为 0，Web 图标栏为 56，主区域与右侧轨道原样保留）。React 每次提交都会用加宽轨道覆盖内联 `gridTemplateColumns`，所以改内联会输掉竞争；`!important` 优先于普通内联样式且 React 从不动那个自定义属性，因此稳定。内层 `*_root` 以 `position: fixed` 浮起，外层 `sidebarCol` 留在流里收窄为折叠轨道。高度显式设为 `calc(100vh - <标题栏>)`，而不用 `top`+`bottom`，否则会把页脚（用户名/头像）挤出视口。
-- **动画绝不动主区域**：frame 网格轨道 `transition: none` 钉死，只动抽屉。滑动用 `left` **而非 `transform`**——desktop 上外壳把折叠按钮 `position: fixed; left:12px` 钉在视口，祖先的 `transform` 会变成 fixed 后代的包含块，从而把按钮重新锚定到抽屉上跟着移动。固定元素的负 `left` 不扩展可滚动区域，所以 12px 超出不会引入横向滚动条。
-- **钉住要撑过收起动画**：收起时由 `closingFloat` 标志在整个 180ms 动画期间保持网格钉住，并在列真正折叠之后、与抽屉内联几何一起清除；否则主区域会在淡出途中先跳宽再缩回，出现闪烁。网页端外壳收起分两步（`wide` 先保持约 150ms 让宽列淡出，`_collapsed` 晚一帧才到），`collapsingToRail` 标记保证抽屉内联几何在那之前不被撕掉（否则轨道会画两遍）。另用 `floatGeneration` 令牌处理「快速重新进入」导致的陈旧清理。
-- **品牌标识克隆而非复制**：从外壳自身品牌行 `[data-slot="sidebar.brand.mark"]` 克隆 SVG，不存在第二份会漂移的副本；外壳只在「宽」态挂载该行，因此在每次 peek 时缓存，折叠时复用，首次折叠前无图可显示则保留原图标不动。三重守卫避免双标识：展开即移除、外壳已有自己的标识则不加、无图可克隆则不动。
-- **tooltip 抑制**：外壳的 tooltip 是挂在 `body` 下的 portal，无法用后代选择器命中，因此直接清空可见气泡的文本。
-
 ## 已知限制
 
 - **仅指针驱动**：没有键盘快捷键触发 peek；触屏上因悬停语义不同，预览主要靠贴边拖动，体验不如桌面悬停。
@@ -108,71 +66,9 @@ PINNED    ──点击折叠按钮─────────▶ COLLAPSED   （
 - **编辑后需重载**：`client.js` 通过 `window.__ModuleLoader__` 从 graph 快照加载，修改后必须重新加载窗口。
 - **已展开态无作为**：侧边栏本来就展开时，插件不添加任何行为（PEEK 只能从折叠态发起）。
 
-## 安装与卸载（完整）
-
-### 安装
-
-1. 本仓库无需构建（`client.js` 以单个 bundle 经 `window.__ModuleLoader__` 加载，`index.js` 仅为宿主占位）。
-2. 在目标 Profile 的 `package.json` 增加（路径用本仓库绝对路径或相对路径）：
-
-```json
-"dependencies": {
-  "dsh-toggle-leftside": "link:/abs/path/to/dsh-toggle-leftside"
-}
-```
-
-3. 在该 Profile 目录执行 `pnpm install`，使 `node_modules/dsh-toggle-leftside` 链接回本仓库：
-
-```
-$HOME/.dsh/profiles/<profile>/node_modules/dsh-toggle-leftside -> <本仓库>
-```
-
-Windows 上 `$HOME` 即 `%USERPROFILE%`。
-
-4. 重新加载 DSH 窗口。`cordis.patch.yml` 与 `package.json` 中的 `dsh.bundle.patch` / `dsh.client` 字段会让外壳把本插件注入加载器并立即启用。
-
-> 也可在 DSH 的 Profile 管理卡片里把本仓库作为本地 bundle 安装/启用（等价于上述 `link:` 依赖）。
-
-### 卸载
-
-1. 从 Profile 的 `package.json` 删除 `dsh-toggle-leftside` 依赖。
-2. 在该 Profile 目录执行 `pnpm install`（或手动移除 `node_modules/dsh-toggle-leftside`）。
-3. 重新加载窗口。插件不再注入，折叠态恢复外壳原生行为。
-
-## 开发与测试
-
-- **无需打包**：仓库即插件，`client.js` 单文件 bundle。
-- **本地联调**：按上面「安装」把仓库 `link:` 进一个开发用 Profile，改完 `client.js` 后**重新加载窗口**即可看到效果（来自 graph 快照，热更新不可用）。
-- **诊断工具**：`_diag/` 目录含布局回归/探测脚本（如 `regress.cjs`，以及 `*-client.js`、`probe_tooltip.js` 等），可在运行中的外壳上复测几何与层级。
-- **手动验证清单**：
-  1. 折叠态悬停左缘 → 抽屉在约 150ms 内浮出，主区域宽度不变；
-  2. 抽屉内可正常点击导航，移开约 200ms 自动收起；
-  3. 预览中点击折叠按钮 → 固定展开（挤压主区域），再点一次收起；
-  4. 展开/收起期间外壳菜单（视图菜单、会话菜单）仍画在抽屉之上；
-  5. Windows 标题栏折叠按钮显示品牌标识，悬停翻回面板图标；
-  6. 改变窗口大小，抽屉跟随重测列宽；
-  7. 设置开关关闭后，下一次悬停即不再预览。
-- **无自动化测试**：当前没有单元测试/端到端套件，主要靠上述手动回归。
-
 ## 版本历史
 
-当前版本 **0.1.0**（`package.json`）。开发里程碑（来自仓库提交）：
-
-| 提交 | 内容 |
-| --- | --- |
-| `aeea704` | 为折叠左侧栏加入悬停预览（hover-to-peek） |
-| `2f8356c` | 新增中英双语 README 文档 |
-| `d8ac82c` | 在折叠按钮上显示品牌标识 |
-| `d28b4cb` | 将预览渲染为主区域之上的浮动抽屉 |
-| `e28c03f` | 在预览收起落定时清理抽屉内联几何 |
-| `d34ccac` | 网页端轨道真正落定前一直保持抽屉（避免画两遍） |
-
-## 要求
-
-- 一个运行 **DSH Web 客户端**的 Profile（桌面 App 与网页端均满足，因为二者共用 Web 客户端；`package.json` 中 `dsh.client.platform` 为 `web`）。
-- 外壳支持 **Cordis patch** 注入（`cordis.patch.yml` + `package.json` 的 `dsh.bundle.patch`）以及 `window.__ModuleLoader__` 客户端加载。
-- 浏览器需支持：`MutationObserver`、`requestAnimationFrame`、CSS 自定义属性、`position: fixed`、Pointer Events。
-- 用于 `link:` 安装的 Node.js / pnpm 环境（仅安装阶段需要）。
+当前版本 **0.1.0**
 
 ## License
 
